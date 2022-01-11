@@ -1,7 +1,10 @@
 import React, { Component } from 'react'
 import { Segment, Container, Grid, Button, Header } from 'semantic-ui-react'
 
-const url = "http://localhost:8080"
+const url = ""
+const targetPercent = 90;
+//const url = "http://localhost:8080" //for testting
+var totalBatteryCapacity = 32;
 
 function getState(state) {
   var estate;
@@ -57,9 +60,11 @@ class App extends Component {
   state = {
     chargeKwh: "∞",
     sessionEnergy: 0,
-    state: 0
+    state: getState(0),
+    toChargePercent: 100,
+    completedKwh: 0
   }
-  //TODO CHANGE URL!!!!
+
   componentDidMount() {
     fetch(url + "/r?json=1&rapi=$GH", {
       "method": "GET",
@@ -68,14 +73,17 @@ class App extends Component {
 
         var a = data.ret.replace("$OK ", "");
         a = a.substring(0, a.indexOf('^'))
+        var b = 100;
 
         if (a === "0") {
           a = "∞";
-        }else{
-          a= Math.ceil(parseFloat(a)-this.state.sessionEnergy)
+        } else {
+          a = Math.ceil(parseFloat(a))
+          b = Math.ceil(parseFloat(a)) / totalBatteryCapacity * 100
         }
 
         this.setState((chargeKwh) => ({ chargeKwh: a }))
+        this.setState(() => ({ toChargePercent: b }))
       })
       .catch((error) => {
         console.error('Error:', error);
@@ -85,15 +93,17 @@ class App extends Component {
       "method": "GET",
     }).then(response => response.json())
       .then(data => {
-        this.setState((sessionEnergy) => ({ sessionEnergy: parseFloat(data.session_energy)/1000 }))
-        this.setState((sessionEnergy) => ({ state: getState(data.state) }))
+        this.setState(() => ({ sessionEnergy: parseFloat(data.session_energy) / 1000 }))
+        this.setState(() => ({ state: getState(data.state) }))
+        this.setState(() => ({ completed: Math.ceil(parseFloat(data.session_energy) / 1000 / this.state.chargeKwh * 100) }))
+        this.setState(() => ({ completedKwh: parseFloat(data.session_energy) / 1000 }))
+
         console.log(data.state);
       })
+
       .catch((error) => {
         console.error('Error:', error);
       });
-
-
   }
 
 
@@ -103,15 +113,12 @@ class App extends Component {
     var currentSoc = parseInt(arg)
 
     var toCharge = 0
+    var toChargePercent = 0;
 
     if (currentSoc !== 0) {
-      var totalBatteryCapacity = 32;
-      var targetKwh = totalBatteryCapacity * 0.9 //charge to 90%
-
+      var targetKwh = totalBatteryCapacity * (targetPercent / 100) //charge to 90%
       var currentCapacity = totalBatteryCapacity * (currentSoc / 100)
-
       toCharge = targetKwh - currentCapacity + this.state.sessionEnergy;
-
     }
 
     fetch(url + "/r?json=1&rapi=$SH+" + Math.ceil(toCharge), {
@@ -153,11 +160,23 @@ class App extends Component {
     return (
       <div className="App">
         <Container style={{ marginTop: '2em' }}>
-          <Header as='h1' textAlign='center'>Charge my Bimmer to 90%</Header>
-          <Header as='h1' textAlign='center'>Status: {this.state.state}</Header>
+          <Header as='h1' textAlign='center'>Will charge for {this.state.chargeKwh}kwh ({this.state.toChargePercent}%)</Header>
+          <Grid container columns={3}>
+            <Grid.Column>
+              <Header as='h4' textAlign='center'>Charger status: {this.state.state}</Header>
+            </Grid.Column>
+            <Grid.Column>
+              <Header as='h4' textAlign='center'> Completed: {this.state.completed}%</Header>
+            </Grid.Column>
+            <Grid.Column>
+              <Header as='h4' textAlign='center'> Charged : {this.state.completedKwh.toFixed(3)}kWh</Header>
+            </Grid.Column>
+          </Grid>
+
+
           <Segment>
             <Header as='h1' textAlign='center'>Select currenct SOC</Header>
-            <Grid container columns={2} doubling>
+            <Grid container columns={2}>
               <Grid.Column>
                 <Button onClick={() => this.handleClick(5)} fluid primary size='massive'>5 %</Button>
               </Grid.Column>
@@ -213,7 +232,6 @@ class App extends Component {
                 <Button onClick={() => this.handleReset()} fluid primary size='massive'>Reset</Button>
               </Grid.Column>
             </Grid>
-            <Header as='h2' textAlign='center'>Will charge for {this.state.chargeKwh} kwh</Header>
           </Segment>
         </Container>
 
